@@ -1,117 +1,142 @@
-# Install Plotly if not already installed
-# !pip install plotly
-
-# Import required libraries
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
-
-# Display settings
-pd.set_option('display.max_columns', None)
-sns.set_style("whitegrid")
+from matplotlib.backends.backend_pdf import PdfPages
 
 # Load the dataset
-df = pd.read_csv("players_21.csv")  # Make sure this file is in the same directory
+df = pd.read_csv("players_21.csv")
 print("✅ Dataset Loaded Successfully!")
-df.head()
 
-# Dataset info
-print("\n🔍 Dataset Info:")
-print(df.info())
-
-# Check missing values
-print("\n🔍 Missing Values:")
-print(df.isnull().sum().sort_values(ascending=False).head(10))
-
-# Drop irrelevant or too sparse columns
-df.drop(columns=['player_url', 'real_face', 'loaned_from', 'nation_position', 'nation_jersey_number'], inplace=True)
-
-# Fill missing numerical values with mean
+# Basic cleaning
+df.drop(columns=['player_url', 'real_face', 'loaned_from', 'nation_position', 'nation_jersey_number'], errors='ignore', inplace=True)
 df['height_cm'] = df['height_cm'].fillna(df['height_cm'].mean())
 df['weight_kg'] = df['weight_kg'].fillna(df['weight_kg'].mean())
-
-# Drop duplicates
 df.drop_duplicates(inplace=True)
 
-# -----------------------------
-# 🎯 EDA Visualizations
-# -----------------------------
+# Start saving plots to a single PDF
+with PdfPages("fifa21_report.pdf") as pdf:
 
-# 1. Top 10 players by overall rating
-top10 = df[['short_name', 'overall', 'club_name']].sort_values(by='overall', ascending=False).head(10)
-plt.figure(figsize=(10, 5))
-sns.barplot(x='overall', y='short_name', data=top10, color='blue')  # No palette warning
-plt.title("Top 10 Players by Overall Rating")
-plt.xlabel("Overall Rating")
-plt.ylabel("Player")
-plt.show()
+    # Top 10 clubs by combined overall rating of best 11 players
+    club_overall = (
+        df.sort_values(['club_name', 'overall'], ascending=[True, False])
+          .groupby('club_name')
+          .head(11)
+          .groupby('club_name')['overall']
+          .sum()
+          .sort_values(ascending=False)
+          .head(10)
+    )
 
-# 2. Age distribution of players
-plt.figure(figsize=(10, 5))
-sns.histplot(df['age'], bins=30, kde=True, color='skyblue')
-plt.title("Age Distribution of Players")
-plt.xlabel("Age")
-plt.ylabel("Number of Players")
-plt.show()
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x=club_overall.values, y=club_overall.index, hue=club_overall.index,
+                palette='mako', dodge=False, legend=False)
+    plt.title("Top 10 Clubs by Combined Overall Rating of Best 11 Players")
+    plt.xlabel("Total Overall Rating")
+    plt.ylabel("Club")
+    pdf.savefig()
+    plt.close()
 
-# 3. Top 10 countries by number of players
-top_nations = df['nationality'].value_counts().head(10)
-plt.figure(figsize=(10, 6))
-sns.barplot(x=top_nations.values, y=top_nations.index, color='green')  # Removed palette
-plt.title("Top 10 Countries by Number of Players")
-plt.xlabel("Number of Players")
-plt.ylabel("Country")
-plt.show()
+    # Top 10 players by overall
+    top10 = df[['short_name', 'overall', 'club_name']].sort_values(by='overall', ascending=False).head(10)
+    plt.figure(figsize=(10, 5))
+    sns.barplot(x='overall', y='short_name', data=top10, color='blue')
+    plt.title("Top 10 Players by Overall Rating")
+    plt.xlabel("Overall Rating")
+    plt.ylabel("Player")
+    pdf.savefig()
+    plt.close()
 
-# 4. Clubs with most players rated above 85
-top_players = df[df['overall'] > 85]
-club_count = top_players['club_name'].value_counts().head(10)
-fig = px.bar(club_count, title="Clubs with Most Players Rated 85+", labels={'index': 'Club', 'value': 'Player Count'})
-fig.show()
+    # Age distribution
+    plt.figure(figsize=(10, 5))
+    sns.histplot(df['age'], bins=30, kde=False, color='skyblue')
+    plt.title("Age Distribution of Players")
+    plt.xlabel("Age")
+    plt.ylabel("Number of Players")
+    pdf.savefig()
+    plt.close()
 
-# 5. Correlation heatmap of attributes
-attributes = df[['pace', 'shooting', 'passing', 'dribbling', 'defending', 'physic', 'overall']]
-plt.figure(figsize=(10, 6))
-sns.heatmap(attributes.corr(), annot=True, cmap='coolwarm')
-plt.title("Correlation Between Key Player Attributes")
-plt.show()
+    # Wage distribution of top 100 players
+    top100 = df.sort_values(by='overall', ascending=False).head(100)
+    plt.figure(figsize=(12, 6))
+    sns.histplot(top100['wage_eur'], bins=30, kde=False, color='orange')
+    plt.title("Wage Distribution of Top 100 Players")
+    plt.xlabel("Wage in Euros")
+    plt.ylabel("Number of Players")
+    pdf.savefig()
+    plt.close()
 
-# 6. Most common player positions
-plt.figure(figsize=(10, 6))
-sns.countplot(data=df, y='player_positions', order=df['player_positions'].value_counts().head(10).index, color='purple')
-plt.title("Most Common Player Positions")
-plt.xlabel("Number of Players")
-plt.ylabel("Position")
-plt.show()
+    # Most common positions
+    top_positions = df['player_positions'].value_counts().head(10)
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=top_positions.values.astype(int), y=top_positions.index, color='purple')
+    plt.title("Most Common Player Positions")
+    plt.xlabel("Number of Players")
+    plt.ylabel("Position")
+    pdf.savefig()
+    plt.close()
 
-# 7. Player Value vs Overall Rating (top 500 players)
-fig = px.scatter(df.head(500), x="overall", y="value_eur",
-                 hover_data=["short_name", "club_name", "age"],
-                 color="age",
-                 title="Player Value vs Overall Rating (Top 500 Players)")
-fig.show()
+    # Top 10 countries by player count
+    top_nations = df['nationality'].value_counts().head(10)
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=top_nations.values.astype(int), y=top_nations.index, color='green')
+    plt.title("Top 10 Countries by Number of Players")
+    plt.xlabel("Number of Players")
+    plt.ylabel("Country")
+    pdf.savefig()
+    plt.close()
 
-# 8. Wage distribution for top 100 players
-top100 = df.sort_values(by='overall', ascending=False).head(100)
-plt.figure(figsize=(12, 6))
-sns.histplot(top100['wage_eur'], bins=30, kde=True, color='orange')
-plt.title("Wage Distribution of Top 100 Players")
-plt.xlabel("Wage in Euros")
-plt.ylabel("Number of Players")
-plt.show()
+    # Top 10 clubs by number of future superstars (Potential ≥ 75 & Gap ≥ 5)
+    df['potential_gap'] = df['potential'] - df['overall']
+    future_stars = df[(df['potential_gap'] >= 5) & (df['potential'] >= 75)]
+    club_future_stars = future_stars['club_name'].value_counts().head(10)
 
-# -----------------------------
-# 📌 Summary Insights
-# -----------------------------
-print("\n📊 Key Insights:")
-print("- Most players are aged between 20–30.")
-print("- England, Germany, and Spain produce the most professional players.")
-print("- FC Barcelona and Real Madrid have many high-rated players.")
-print("- There's a strong positive correlation between attributes like pace, dribbling, and overall rating.")
-print("- Player value rises steeply with overall rating but also depends on age.")
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x=club_future_stars.values.astype(int), y=club_future_stars.index, hue=club_future_stars.index,
+                palette='crest', dodge=False, legend=False)
+    plt.title("Top 10 Clubs by Number of Future Superstars (Potential ≥ 75 & Gap ≥ 5)")
+    plt.xlabel("Number of Future Stars")
+    plt.ylabel("Club")
+    pdf.savefig()
+    plt.close()
 
-# Optional: Save cleaned dataset
-df.to_csv("fifa21_cleaned.csv", index=False)
-print("\n✅ Cleaned dataset saved as 'fifa21_cleaned.csv'")
+    # Best leagues currently (by avg overall of top 20 players per league)
+    league_overall = (
+        df.sort_values(['league_name', 'overall'], ascending=[True, False])
+          .groupby('league_name')
+          .head(20)
+          .groupby('league_name')['overall']
+          .mean()
+          .sort_values(ascending=False)
+          .head(10)
+    )
+
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x=league_overall.values, y=league_overall.index, hue=league_overall.index,
+                palette='rocket', dodge=False, legend=False)
+    plt.title("Top 10 Leagues by Average Overall Rating of Top 20 Players")
+    plt.xlabel("Average Overall Rating")
+    plt.ylabel("League")
+    pdf.savefig()
+    plt.close()
+
+    # Best leagues in future (by avg potential of top 20 players per league)
+    league_potential = (
+        df.sort_values(['league_name', 'potential'], ascending=[True, False])
+          .groupby('league_name')
+          .head(20)
+          .groupby('league_name')['potential']
+          .mean()
+          .sort_values(ascending=False)
+          .head(10)
+    )
+
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x=league_potential.values, y=league_potential.index, hue=league_potential.index,
+                palette='flare', dodge=False, legend=False)
+    plt.title("Top 10 Leagues by Average Potential Rating of Top 20 Players")
+    plt.xlabel("Average Potential Rating")
+    plt.ylabel("League")
+    pdf.savefig()
+    plt.close()
+
+print("📄 All plots saved to fifa21_report.pdf!")
